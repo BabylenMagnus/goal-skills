@@ -1,0 +1,12 @@
+{
+  "name": "goal-skills",
+  "description": "Skills for the Spelflow goal system (goal.spelflow.ru): create, read, edit, close, postpone and delete goals through its REST API",
+  "version": "0.1.0",
+  "homepage": "https://github.com/BabylenMagnus/goal-skills",
+  "repository": "https://github.com/BabylenMagnus/goal-skills",
+  "keywords": [
+    "spelflow",
+    "goals",
+    "skills"
+  ]
+}

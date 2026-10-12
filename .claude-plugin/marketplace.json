@@ -1,0 +1,15 @@
+{
+  "name": "goal-skills",
+  "description": "Claude Code skills for the Spelflow goal system (goal.spelflow.ru)",
+  "owner": {
+    "name": "BabylenMagnus"
+  },
+  "plugins": [
+    {
+      "name": "goal-skills",
+      "description": "Skills for the Spelflow goal system: create, read, edit, close, postpone and delete goals through its REST API",
+      "version": "0.1.0",
+      "source": "./"
+    }
+  ]
+}
