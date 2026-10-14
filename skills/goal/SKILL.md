@@ -43,7 +43,11 @@ The user should end up with a small, clear goal, not a dumped sentence. Talk it 
 2. If it is a solution ("buy a treadmill"), ask what result they want from it.
 3. Ask how they will know it worked: a number or a clear sign (`measureText`, or a numeric `measure`).
 4. For an action, find which result it serves (`parentId`) or say honestly that it serves none.
-5. Ask for the first small step (`nextAction`) and, if useful, an if-then trigger (`ifThen`).
+5. For an action that will start in `work`, ask three short questions, one at a time:
+   1. The first small step (`nextAction`).
+   2. What will most likely get in the way? One sentence. Build the trigger on this obstacle.
+   3. When exactly will they start? The answer becomes `ifThen`: "If <event or time>, then <step>". The "if" must be something that happens by itself (a time, an event, the end of a previous task), not a decision to start. If the answer is only an intention ("when I sit down to work on X"), suggest tying it to an event or time once, and accept the answer if the user insists. Do not reject it.
+   The user may skip questions 2 and 3: save the card without `ifThen` and do not press. Do not ask 2 and 3 for a `result`, or for an action that starts in `later`.
 6. **Show the finished card and wait for an explicit yes. Only then `POST`.**
 
 Direction and status are never guessed. If the user has not said them, ask.
@@ -59,6 +63,8 @@ Direction and status are never guessed. If the user has not said them, ask.
 | "later, return DATE" | `{"status":"later","returnDate":"DATE"}` |
 | "done" / "drop it" / "replaced" | `{"status":"closed","closeReason":"done\|cancelled\|replaced","closeNote":"what came out"}` |
 | "I weighed 88.2 today" | update `measure.value` and append `{"date":"YYYY-MM-DD","entry":88.2}` to `measure.log` (send the whole `measure`) |
+
+When moving an action to `work` that has no `ifThen`, offer once to add the obstacle and the trigger (step 5, questions 2 and 3); do not insist.
 
 Before moving a goal to `work`, count goals already in `work` (leaf goals only). If there are already three, tell the user and offer to postpone one. This is a warning, not a ban: take it over the limit only if the user says so.
 
