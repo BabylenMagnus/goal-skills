@@ -1,7 +1,9 @@
 ---
 name: goal
-description: Use when the user wants to add, look up, change, close, postpone or delete a personal goal in the Spelflow goal system (goal.spelflow.ru) — phrasing like "add a goal", "create a goal for X", "what goals am I working on", "what am I waiting for", "put this goal on hold until Friday", "mark GOAL-3 done", "change the check date", "delete goal GOAL-7". Do not use for ordinary Spelflow Tracker issues (use spelflow-tracker or spelflow-loader) or for anything where the user has not asked to touch goals.
+description: Use when the user wants to add, look up, change, close, postpone or delete a goal (personal or work, for example Rusal, Tanuki, Spelflow) in the Spelflow goal system (goal.spelflow.ru), or asks what to do next on a direction — phrasing like "add a goal", "create a goal for X", "what goals am I working on", "what am I waiting for", "what next", "what are our goals", "how is Rusal going", "what should I do about Tanuki", "put this goal on hold until Friday", "mark GOAL-3 done", "change the check date", "delete goal GOAL-7". Do not use for ordinary Spelflow Tracker issues (use spelflow-tracker or spelflow-loader).
 scenarios:
+  - "What do we do next on Rusal?"
+  - "How is the Tanuki direction going?"
   - "Add a goal: first paying user of Tanuki by the end of November"
   - "What goals are in Waiting and when do I check them?"
   - "Move GOAL-4 to waiting for the access request, check on Friday"
@@ -35,7 +37,21 @@ Full field list, statuses, errors and examples: `reference/api-reference.md`. Re
 - **Waiting needs two things together:** `waitingFor` (what is awaited) and `check` (the date to look again). Never set `waiting` with only one of them. The API rejects it.
 - **Direction** (`direction`) is required: the project the goal belongs to (Tanuki, Spelflow, a body goal, and so on).
 
+## "What next?" mode
+
+When the user asks what the goals are, how a direction is going or what to do next, answer from the system first. This mode only reads until the user agrees to a write.
+
+1. **Read first.** `GET` the goals of the named direction (`?direction=...`). Ask one question only if no direction is named or the name matches none: which direction. If the direction exists, do not ask "goals in the system or project goals?".
+2. **Show the state in at most 5 lines:** goals in `work` (up to 3), goals in `waiting` with check dates, overdue items (check date or deadline passed). State overdue neutrally and offer three moves: shrink the step, move the date, or close it. No judgement.
+3. **Two deadlines.** If the context gives two different deadlines for one goal, ask once which one is the goal's deadline. Without a deadline there is no pace.
+4. **Only then use project context** (wiki, PM files, what the user told you). Each plan item either points to an existing goal or is offered as a new card. Offer cards only for next actions and waits, at most three at a time. Other plan items stay in the chat or a PM file, so the goal list does not fill up.
+5. **External dependencies** (a request, a reply from a person, a ticket): offer a `waiting` card with `waitingFor` and a check date. Never invent the date; ask.
+6. **End with one recommended step**, not a choice between options. If the user will do the step themselves, ask the two questions from "Creating a goal", step 5: what will most likely get in the way, and when exactly they start (an event or a time). Skip them if an agent does the step.
+7. Every write follows the Hard rules: only after the user has seen the exact content and said yes.
+
 ## Creating a goal
+
+To answer "what next" without creating anything, see the previous section.
 
 The user should end up with a small, clear goal, not a dumped sentence. Talk it through before writing:
 
