@@ -19,14 +19,20 @@ Work with the user's goals in the Spelflow goal system through its REST API: `ht
 ## Quick start
 
 ```bash
-# SPELFLOW_API_TOKEN (hly_...) must already be set in the environment. Never print it.
+# Token (hly_...): shared convention, same in every Spelflow skill. Never print it.
+T="${SPELFLOW_TOKEN:-$SPELFLOW_API_TOKEN}"
+[ -z "$T" ] && [ -f .env ] && T=$(grep -E '^SPELFLOW_(API_)?TOKEN=' .env | head -1 | cut -d= -f2- | tr -d '\r\n "')
+[ -z "$T" ] && [ -f ~/.spelflow/token ] && T=$(tr -d '\r\n ' < ~/.spelflow/token)
+[ -z "$T" ] && { echo NO_TOKEN; exit 1; }
+AUTH="Authorization: Bearer $T"
 API="https://goal.spelflow.ru/api/goals"
-AUTH="Authorization: Bearer $SPELFLOW_API_TOKEN"
 
 curl -s -H "$AUTH" "$API"                          # all goals
 curl -s -H "$AUTH" "$API?status=waiting"           # filter: status, kind, direction
 curl -s -H "$AUTH" "$API/GOAL-3"                   # one goal
 ```
+
+Token lookup order: environment variable `SPELFLOW_TOKEN` (or `SPELFLOW_API_TOKEN`), then `.env` in the project root, then `~/.spelflow/token`, then a token the user already gave in this conversation. If none is found (`NO_TOKEN`), ask the user to paste it (Spelflow, Settings → API tokens → Create token, shown once) and offer to save it: project `.env` (make sure `.gitignore` lists `.env`), the global file `~/.spelflow/token`, or not at all. Paste the block above at the start of each Bash call that uses the API.
 
 Full field list, statuses, errors and examples: `reference/api-reference.md`. Read it before the first write.
 
@@ -96,7 +102,7 @@ Delete is real and irreversible: the issue disappears from the tracker. Prefer c
 
 - Write to the API only after the user has seen the exact content and said yes. Reading needs no confirmation.
 - Only touch goals the user named or you just listed for them. Never guess a `GOAL-N`.
-- Read the token only from `SPELFLOW_API_TOKEN`. Never print it or put it in a goal, a comment or a commit.
+- Find the token only as described in Quick start (the shared Spelflow token convention). Never print it or put it in a goal, a comment, a wiki page or a commit.
 - Non-ASCII text (Russian titles): write the JSON body to a file and send it with `curl --data-binary @file`. Inline `curl -d '...'` on Windows corrupts non-ASCII bytes silently, and the request still returns success. After a write, read the goal back and check the text.
 - After each write, report back in one line what changed and the goal id.
 - Dates are `YYYY-MM-DD`. Never write a date you guessed; ask.

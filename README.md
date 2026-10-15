@@ -25,12 +25,14 @@ npx skills add BabylenMagnus/goal-skills
 
 ## Token
 
-In Spelflow, Settings → API tokens → Create token, copy the `hly_...` value (shown once), then set it yourself. Never paste it into a chat:
+In Spelflow, Settings → API tokens → Create token, copy the `hly_...` value (shown once). The skill looks for it in this order: environment variable `SPELFLOW_TOKEN` (`SPELFLOW_API_TOKEN` also works), then `.env` in the project root, then the file `~/.spelflow/token`. If none exists it asks you to paste it and offers to save it.
 
 ```bash
-export SPELFLOW_API_TOKEN=hly_...        # bash
-$env:SPELFLOW_API_TOKEN = "hly_..."      # PowerShell
+export SPELFLOW_TOKEN=hly_...        # bash
+$env:SPELFLOW_TOKEN = "hly_..."      # PowerShell
 ```
+
+Keep the token out of git: never commit `.env` or the token file.
 
 ## Layout
 
