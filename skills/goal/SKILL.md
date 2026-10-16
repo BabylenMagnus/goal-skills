@@ -1,20 +1,20 @@
 ---
 name: goal
-description: Use when the user wants to add, look up, change, close, postpone or delete a goal (personal or work, for example Rusal, Tanuki, Spelflow) in the Spelflow goal system (goal.spelflow.ru), or asks what to do next on a direction — phrasing like "add a goal", "create a goal for X", "what goals am I working on", "what am I waiting for", "what next", "what are our goals", "how is Rusal going", "what should I do about Tanuki", "put this goal on hold until Friday", "mark GOAL-3 done", "change the check date", "delete goal GOAL-7". Do not use for ordinary Spelflow Tracker issues (use spelflow-tracker or spelflow-loader).
+description: Use when the user wants to add, look up, change, close, postpone or delete a goal (personal or work, for example Rusal, Tanuki, Spelflow) in the Spelflow goal system (goal.spelflow.ru), or asks what to do next on a direction — phrasing like "add a goal", "create a goal for X", "what goals am I working on", "what am I waiting for", "what next", "what are our goals", "how is Rusal going", "what should I do about Tanuki", "put this goal on hold until Friday", "mark me:GOAL-3 done", "change the check date", "delete goal GOAL-7". Do not use for ordinary Spelflow Tracker issues (use spelflow-tracker or spelflow-loader).
 scenarios:
   - "What do we do next on Rusal?"
   - "How is the Tanuki direction going?"
   - "Add a goal: first paying user of Tanuki by the end of November"
   - "What goals are in Waiting and when do I check them?"
-  - "Move GOAL-4 to waiting for the access request, check on Friday"
-  - "Close GOAL-2, I did it, 100 km done"
+  - "Move rusal:GOAL-4 to waiting for the access request, check on Friday"
+  - "Close me:GOAL-2, I did it, 100 km done"
 license: MIT
 allowed-tools: Bash(curl:*)
 ---
 
 # Spelflow Goals
 
-Work with the user's goals in the Spelflow goal system through its REST API: `https://goal.spelflow.ru/api/goals`. Goals live as issues of the `GOAL` project in the user's Spelflow tracker, so everything you write is also visible there as `GOAL-N`.
+Work with the user's goals in the Spelflow goal system through its REST API: `https://goal.spelflow.ru/api/goals`. Goals live as issues of a `GOAL` project in the Spelflow tracker, **in the workspace of the goal's own project** (Tanuki goals in the Tanuki workspace, Rusal goals in the Rusal workspace, personal goals in the personal workspace). A goal is addressed as `<space>:GOAL-N`, for example `me:GOAL-3` or `rusal:GOAL-1`, because `GOAL-N` repeats across workspaces.
 
 ## Quick start
 
@@ -29,7 +29,8 @@ API="https://goal.spelflow.ru/api/goals"
 
 curl -s -H "$AUTH" "$API"                          # all goals
 curl -s -H "$AUTH" "$API?status=waiting"           # filter: status, kind, direction
-curl -s -H "$AUTH" "$API/GOAL-3"                   # one goal
+curl -s -H "$AUTH" "$API/me:GOAL-3"                # one goal (space key + number)
+curl -s https://goal.spelflow.ru/api               # index: lists the space keys and their directions
 ```
 
 Token lookup order: environment variable `SPELFLOW_TOKEN` (or `SPELFLOW_API_TOKEN`), then `.env` in the project root, then `~/.spelflow/token`, then a token the user already gave in this conversation. If none is found (`NO_TOKEN`), ask the user to paste it (Spelflow, Settings → API tokens → Create token, shown once) and offer to save it: project `.env` (make sure `.gitignore` lists `.env`), the global file `~/.spelflow/token`, or not at all. Paste the block above at the start of each Bash call that uses the API.
@@ -42,6 +43,7 @@ Full field list, statuses, errors and examples: `reference/api-reference.md`. Re
 - **Status:** `work`, `waiting`, `later`, `closed`.
 - **Waiting needs two things together:** `waitingFor` (what is awaited) and `check` (the date to look again). Never set `waiting` with only one of them. The API rejects it.
 - **Direction** (`direction`) is required: the project the goal belongs to (Tanuki, Spelflow, a body goal, and so on).
+- **Space** decides where the goal is stored. The direction maps to a space (read the table from `GET https://goal.spelflow.ru/api`, field `spaces`). Never store a goal in a space the user did not intend. See "Where the goal goes".
 
 ## "What next?" mode
 
@@ -51,9 +53,11 @@ When the user asks what the goals are, how a direction is going or what to do ne
 2. **Show the state in at most 5 lines:** goals in `work` (up to 3), goals in `waiting` with check dates, overdue items (check date or deadline passed). State overdue neutrally and offer three moves: shrink the step, move the date, or close it. No judgement.
 3. **Two deadlines.** If the context gives two different deadlines for one goal, ask once which one is the goal's deadline. Without a deadline there is no pace.
 4. **Only then use project context** (wiki, PM files, what the user told you). Each plan item either points to an existing goal or is offered as a new card. Offer cards only for next actions and waits, at most three at a time. Other plan items stay in the chat or a PM file, so the goal list does not fill up.
-5. **External dependencies** (a request, a reply from a person, a ticket): offer a `waiting` card with `waitingFor` and a check date. Never invent the date; ask.
-6. **End with one recommended step**, not a choice between options. If the user will do the step themselves, ask the two questions from "Creating a goal", step 5: what will most likely get in the way, and when exactly they start (an event or a time). Skip them if an agent does the step.
-7. Every write follows the Hard rules: only after the user has seen the exact content and said yes.
+5. **External dependencies** (a request, a reply from a person, a ticket): offer a `waiting` card with `waitingFor` and a check date, but only when the request has already been sent. If the question has not been asked yet, offer an action card ("ask X about Y") instead and create the `waiting` card after the question is asked. Never invent the date; ask.
+6. **End with one recommended step**, not a choice between options. If the user will do the step themselves, ask the two questions from "Creating a goal", step 5: what will most likely get in the way, and when exactly they start (an event or a time). If the user has a scheduled event (a call, a meeting) that fits, offer it as the trigger for `ifThen`. Skip the questions if an agent does the step.
+7. **Say the risk in one line.** If the context gives both a deadline and an amount of work (for example 18 tasks of about a day each and 17 calendar days), state in one line that they may not fit and what is unknown (task size, a blocking dependency). Do not conclude; the user decides.
+8. Keep other handles for a short "later" line (at most three items), not a list of equal options.
+9. Every write follows the Hard rules: only after the user has seen the exact content and said yes.
 
 ## Creating a goal
 
@@ -73,6 +77,16 @@ The user should end up with a small, clear goal, not a dumped sentence. Talk it 
 6. **Show the finished card and wait for an explicit yes. Only then `POST`.**
 
 Direction and status are never guessed. If the user has not said them, ask.
+
+## Where the goal goes
+
+Every new goal is stored in the workspace of its project. Decide this before showing the card:
+
+1. Read `GET https://goal.spelflow.ru/api` and take the `spaces` list (key, name, directions).
+2. If the direction is listed under a space, name that space in the card you show: "This goes to the **Rusal** workspace". An action always goes where its result is, so a card with `parentId` stays in that space.
+3. If the direction is in no space, or the user wants another one, **ask** which space (offer the listed ones) and send `"space": "<key>"` in the body. Never fall back to any space on your own.
+4. If the API answers `409` (the `GOAL` project does not exist in that workspace), tell the user and offer to create the project there (for example with `spelflow-loader`). Do not create it without a yes, and do not store the goal somewhere else instead.
+5. Goals of a direction that has no workspace yet are not stored until the user decides where. Say so and wait.
 
 ## Changing a goal
 
@@ -96,12 +110,12 @@ Delete is real and irreversible: the issue disappears from the tracker. Prefer c
 
 1. Show the goal and say it will be erased for good.
 2. Wait for an explicit yes.
-3. `DELETE /api/goals/GOAL-N`. If the goal has actions the API answers `409` with their ids. Tell the user; use `?force=1` only if they confirm that the actions stay without a result.
+3. `DELETE /api/goals/<space>:GOAL-N`. If the goal has actions the API answers `409` with their ids. Tell the user; use `?force=1` only if they confirm that the actions stay without a result.
 
 ## Hard rules
 
 - Write to the API only after the user has seen the exact content and said yes. Reading needs no confirmation.
-- Only touch goals the user named or you just listed for them. Never guess a `GOAL-N`.
+- Only touch goals the user named or you just listed for them. Never guess a goal address (`<space>:GOAL-N`) or a space.
 - Find the token only as described in Quick start (the shared Spelflow token convention). Never print it or put it in a goal, a comment, a wiki page or a commit.
 - Non-ASCII text (Russian titles): write the JSON body to a file and send it with `curl --data-binary @file`. Inline `curl -d '...'` on Windows corrupts non-ASCII bytes silently, and the request still returns success. After a write, read the goal back and check the text.
 - After each write, report back in one line what changed and the goal id.

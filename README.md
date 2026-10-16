@@ -6,7 +6,7 @@ Claude Code skills for the Spelflow goal system ([goal.spelflow.ru](https://goal
 
 | Skill | Trigger | What it does |
 |---|---|---|
-| `goal` | phrases like "add a goal", "what am I waiting for", "close GOAL-3" | Create, read, edit, close, postpone and delete goals through the goal REST API. Confirms every write with the user first |
+| `goal` | phrases like "add a goal", "what am I waiting for", "close me:GOAL-3" | Create, read, edit, close, postpone and delete goals through the goal REST API. Confirms every write with the user first |
 
 ## Install
 
