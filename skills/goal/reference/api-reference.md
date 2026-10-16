@@ -2,41 +2,28 @@
 
 Base URL: `https://goal.spelflow.ru/api/goals`
 
-Auth: `Authorization: Bearer <token>`. Either a Spelflow Personal API Token (`hly_...`, Settings → API tokens) or the session token of a logged-in Spelflow user. The server forwards your token to the Spelflow tracker, so you see and change exactly what your account can in the `GOAL` project of each configured workspace. Nothing is stored server-side.
-
-## Spaces
-
-A goal lives in the workspace of its project. Spaces are configured on the server; `GET /api` lists them with the directions that map to each. Goals are addressed as `<space>:GOAL-N` (`me:GOAL-1`, `rusal:GOAL-2`) because tracker numbers repeat across workspaces.
-
-| Key | Workspace | Directions |
-|---|---|---|
-| `me` | Personal ("Личное") | Тело, Отношения |
-| `rusal` | Русал | Русал |
-| `tanuki` | Тануки | Tanuki |
-| `spelflow` | Spelflow | Spelflow |
-
-There is no default space. If a direction maps to none and the body has no `space`, `POST` answers `400` and names the available keys.
+Auth: `Authorization: Bearer <token>`. Either a Spelflow Personal API Token (`hly_...`, Settings → API tokens) or the session token of a logged-in Spelflow user. The server asks Spelflow whether it accepts the token and whether the account belongs to the personal workspace; the goals themselves are read from and written to the goal system's own PostgreSQL database. Spelflow Tracker is never written.
 
 ## Endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/goals` | List goals from all spaces. Optional filters: `status`, `kind`, `direction`, `space` |
-| `GET` | `/api/goals/<space>:GOAL-N` | One goal |
-| `POST` | `/api/goals` | Create a goal. Body: a goal without `id`, plus `space` when the direction maps to none. A goal with `parentId` goes to its result's space |
-| `PATCH` | `/api/goals/<space>:GOAL-N` | Partial update. `null` clears a field |
-| `DELETE` | `/api/goals/<space>:GOAL-N` | Delete for good. `409` if the goal has actions; `?force=1` overrides |
+| `GET` | `/api/goals` | List goals. Optional filters: `status`, `kind`, `direction` |
+| `GET` | `/api/goals/G-N` | One goal |
+| `POST` | `/api/goals` | Create a goal. Body: a goal without `id` |
+| `PATCH` | `/api/goals/G-N` | Partial update. `null` clears a field |
+| `DELETE` | `/api/goals/G-N` | Delete for good. `409` if the goal has actions; `?force=1` overrides |
 
 ## Goal object
 
 | Field | Type | Notes |
 |---|---|---|
-| `id` | string | `<space>:GOAL-N`, assigned by the tracker. Read-only |
+| `id` | string | `G-N`, assigned by the database. Read-only |
 | `title` | string | Required. The result or action, as the user would say it |
 | `kind` | `"result"` \| `"action"` | Required |
 | `direction` | string | Required. Never guessed |
 | `status` | `"work"` \| `"waiting"` \| `"later"` \| `"closed"` | Required |
-| `parentId` | string | Id of the result this action serves (`<space>:GOAL-N`). It must be in the same space |
+| `parentId` | string | Id of the result this action serves (`G-N`) |
 | `measureText` | string | Free-text measure while no number is set |
 | `measure` | object | `{unit, start, target?, value, mode, ticks?, log}`. `mode` is `"sum"` (entries add up) or `"last"` (entry is the new reading). `log` is `[{date, entry}]` |
 | `recurring` | string | Schedule, e.g. "every Sunday" |
@@ -48,6 +35,7 @@ There is no default space. If a direction maps to none and the body has no `spac
 | `deadline` | `YYYY-MM-DD` | |
 | `closeReason` | `"done"` \| `"cancelled"` \| `"replaced"` | With `status: "closed"` |
 | `closeNote` | string | What came out |
+| `links` | array | Optional pointers to a tracker project or task: `[{"workspace": "<slug>", "project"?: "<KEY>", "issue"?: "<KEY-N>", "label"?: "<text>"}]`. `GET /api` lists the workspace slugs. Read-only for the tracker |
 
 Unknown fields are ignored.
 
@@ -68,7 +56,7 @@ curl -s -X POST -H "$AUTH" -H "Content-Type: application/json; charset=utf-8" \
   "kind": "action",
   "direction": "Body",
   "status": "work",
-  "parentId": "me:GOAL-1",
+  "parentId": "G-1",
   "measure": {"unit": "km", "start": 0, "target": 100, "value": 0, "mode": "sum", "log": []},
   "recurring": "three times a week",
   "ifThen": "If it is Monday, Wednesday or Saturday morning, then I run before work",
@@ -76,14 +64,14 @@ curl -s -X POST -H "$AUTH" -H "Content-Type: application/json; charset=utf-8" \
 }
 ```
 
-Response `201`: `{"goal": {... "id": "me:GOAL-5"}}`. The space came from the parent. For a new direction add `"space": "rusal"` (or another key) to the body.
+Response `201`: `{"goal": {... "id": "G-5"}}`.
 
 Move to waiting:
 
 ```bash
 curl -s -X PATCH -H "$AUTH" -H "Content-Type: application/json" \
   -d '{"status":"waiting","waitingFor":"access request","check":"2026-10-20"}' \
-  "https://goal.spelflow.ru/api/goals/rusal:GOAL-4"
+  "https://goal.spelflow.ru/api/goals/G-4"
 ```
 
 Back to work (clear the waiting fields):
@@ -91,21 +79,20 @@ Back to work (clear the waiting fields):
 ```bash
 curl -s -X PATCH -H "$AUTH" -H "Content-Type: application/json" \
   -d '{"status":"work","waitingFor":null,"check":null}' \
-  "https://goal.spelflow.ru/api/goals/rusal:GOAL-4"
+  "https://goal.spelflow.ru/api/goals/G-4"
 ```
 
 ## Errors
 
 | Code | Meaning |
 |---|---|
-| `400` | Bad body: missing title, kind, direction or status; `waiting` without `waitingFor` and `check`; bad id; no space for the direction; parent in another space |
+| `400` | Bad body: missing title, kind, direction or status; `waiting` without `waitingFor` and `check`; bad id; parent goal not found |
 | `401` | No or invalid token |
 | `404` | Goal not found |
-| `409` | `DELETE` of a goal that has actions (body lists them in `children`), or `POST` into a space whose workspace has no `GOAL` project |
-| `502`, `504` | The tracker answered badly or too slowly. Retry once; the tracker can take tens of seconds |
-
-If `GET /api/goals` returns `{"missing": true, "goals": []}`, the `GOAL` project exists in none of the configured workspaces. `missingSpaces` lists the keys of workspaces that have no `GOAL` project yet.
+| `503` | The goal database is not reachable (it sits behind a shared SSH tunnel). Retry later; no data is lost |
+| `409` | `DELETE` of a goal that has actions. Body lists them in `children` |
+| `502`, `504` | Spelflow (the token check) answered badly or too slowly. Retry once |
 
 ## How goals are stored
 
-Each goal is an issue in the tracker. Fields that an issue does not have are kept as a short readable list at the top of its description, between `<!-- goal:v1 -->` and `<!-- /goal -->`. Text below that list is free text: the API never touches it. The list endpoint of the tracker returns no status, so the status of a goal is read from this block. The tracker status is mirrored on every write (`In Progress`, `Waiting`, `Backlog`, `Done`, `Canceled`).
+Each goal is a row of the `goals` table in the goal system's PostgreSQL database, with its tracker links in `goal_links` and the weekly review history in `reviews`. Goals belong to the owner whose token is used. Nothing is written to Spelflow Tracker.

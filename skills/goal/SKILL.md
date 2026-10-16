@@ -1,20 +1,20 @@
 ---
 name: goal
-description: Use when the user wants to add, look up, change, close, postpone or delete a goal (personal or work, for example Rusal, Tanuki, Spelflow) in the Spelflow goal system (goal.spelflow.ru), or asks what to do next on a direction — phrasing like "add a goal", "create a goal for X", "what goals am I working on", "what am I waiting for", "what next", "what are our goals", "how is Rusal going", "what should I do about Tanuki", "put this goal on hold until Friday", "mark me:GOAL-3 done", "change the check date", "delete goal GOAL-7". Do not use for ordinary Spelflow Tracker issues (use spelflow-tracker or spelflow-loader).
+description: Use when the user wants to add, look up, change, close, postpone or delete a goal (personal or work, for example Rusal, Tanuki, Spelflow) in the Spelflow goal system (goal.spelflow.ru), or asks what to do next on a direction — phrasing like "add a goal", "create a goal for X", "what goals am I working on", "what am I waiting for", "what next", "what are our goals", "how is Rusal going", "what should I do about Tanuki", "put this goal on hold until Friday", "mark G-3 done", "change the check date", "delete goal G-7". Do not use for ordinary Spelflow Tracker issues (use spelflow-tracker or spelflow-loader).
 scenarios:
   - "What do we do next on Rusal?"
   - "How is the Tanuki direction going?"
   - "Add a goal: first paying user of Tanuki by the end of November"
   - "What goals are in Waiting and when do I check them?"
-  - "Move rusal:GOAL-4 to waiting for the access request, check on Friday"
-  - "Close me:GOAL-2, I did it, 100 km done"
+  - "Move G-4 to waiting for the access request, check on Friday"
+  - "Close G-2, I did it, 100 km done"
 license: MIT
 allowed-tools: Bash(curl:*)
 ---
 
 # Spelflow Goals
 
-Work with the user's goals in the Spelflow goal system through its REST API: `https://goal.spelflow.ru/api/goals`. Goals live as issues of a `GOAL` project in the Spelflow tracker, **in the workspace of the goal's own project** (Tanuki goals in the Tanuki workspace, Rusal goals in the Rusal workspace, personal goals in the personal workspace). A goal is addressed as `<space>:GOAL-N`, for example `me:GOAL-3` or `rusal:GOAL-1`, because `GOAL-N` repeats across workspaces.
+Work with the user's goals in the Spelflow goal system through its REST API: `https://goal.spelflow.ru/api/goals`. Goals are their own records in the goal system's database (PostgreSQL). They are **not** tracker issues. A goal is addressed as `G-N` (for example `G-3`). A goal may optionally link to a tracker project or task (see "Links"), and the link is only a pointer: writing a goal never changes anything in the tracker.
 
 ## Quick start
 
@@ -29,8 +29,8 @@ API="https://goal.spelflow.ru/api/goals"
 
 curl -s -H "$AUTH" "$API"                          # all goals
 curl -s -H "$AUTH" "$API?status=waiting"           # filter: status, kind, direction
-curl -s -H "$AUTH" "$API/me:GOAL-3"                # one goal (space key + number)
-curl -s https://goal.spelflow.ru/api               # index: lists the space keys and their directions
+curl -s -H "$AUTH" "$API/G-3"                       # one goal
+curl -s https://goal.spelflow.ru/api               # index of the API
 ```
 
 Token lookup order: environment variable `SPELFLOW_TOKEN` (or `SPELFLOW_API_TOKEN`), then `.env` in the project root, then `~/.spelflow/token`, then a token the user already gave in this conversation. If none is found (`NO_TOKEN`), ask the user to paste it (Spelflow, Settings → API tokens → Create token, shown once) and offer to save it: project `.env` (make sure `.gitignore` lists `.env`), the global file `~/.spelflow/token`, or not at all. Paste the block above at the start of each Bash call that uses the API.
@@ -43,7 +43,7 @@ Full field list, statuses, errors and examples: `reference/api-reference.md`. Re
 - **Status:** `work`, `waiting`, `later`, `closed`.
 - **Waiting needs two things together:** `waitingFor` (what is awaited) and `check` (the date to look again). Never set `waiting` with only one of them. The API rejects it.
 - **Direction** (`direction`) is required: the project the goal belongs to (Tanuki, Spelflow, a body goal, and so on).
-- **Space** decides where the goal is stored. The direction maps to a space (read the table from `GET https://goal.spelflow.ru/api`, field `spaces`). Never store a goal in a space the user did not intend. See "Where the goal goes".
+- **Links** (`links`) are optional pointers to a tracker project or task, for example a goal "finish the A0A project" linked to that project. Many goals have none ("Relationships", "Weight"). See "Links".
 
 ## "What next?" mode
 
@@ -78,15 +78,14 @@ The user should end up with a small, clear goal, not a dumped sentence. Talk it 
 
 Direction and status are never guessed. If the user has not said them, ask.
 
-## Where the goal goes
+## Links
 
-Every new goal is stored in the workspace of its project. Decide this before showing the card:
+A goal is not a task. "Finish the whole A0A project" is a goal and the project is the work behind it; "Weight below 85 kg" is a goal with a number and no project; "Relationships" is a distant goal that has no project at all. So:
 
-1. Read `GET https://goal.spelflow.ru/api` and take the `spaces` list (key, name, directions).
-2. If the direction is listed under a space, name that space in the card you show: "This goes to the **Rusal** workspace". An action always goes where its result is, so a card with `parentId` stays in that space.
-3. If the direction is in no space, or the user wants another one, **ask** which space (offer the listed ones) and send `"space": "<key>"` in the body. Never fall back to any space on your own.
-4. If the API answers `409` (the `GOAL` project does not exist in that workspace), tell the user and offer to create the project there (for example with `spelflow-loader`). Do not create it without a yes, and do not store the goal somewhere else instead.
-5. Goals of a direction that has no workspace yet are not stored until the user decides where. Say so and wait.
+1. Never create a goal as a tracker task and never write into the tracker. The goal lives in the goal system's own database.
+2. Ask whether the goal relates to an existing tracker project or tasks only when the user mentions one. Do not push a link.
+3. A link is `{"workspace": "<workspace slug>", "project": "<key>", "issue": "<KEY-N>", "label": "<optional text>"}`; `project` and `issue` are optional. The workspace slugs are listed by `GET https://goal.spelflow.ru/api` under `linkWorkspaces`.
+4. Links are read-only for the system: the goal never changes a task's status or due date.
 
 ## Changing a goal
 
@@ -106,16 +105,16 @@ Before moving a goal to `work`, count goals already in `work` (leaf goals only).
 
 ## Deleting a goal
 
-Delete is real and irreversible: the issue disappears from the tracker. Prefer closing (`closeReason: "cancelled"`) unless the user says delete.
+Delete is real and irreversible: the goal disappears from the database. Prefer closing (`closeReason: "cancelled"`) unless the user says delete.
 
 1. Show the goal and say it will be erased for good.
 2. Wait for an explicit yes.
-3. `DELETE /api/goals/<space>:GOAL-N`. If the goal has actions the API answers `409` with their ids. Tell the user; use `?force=1` only if they confirm that the actions stay without a result.
+3. `DELETE /api/goals/G-N`. If the goal has actions the API answers `409` with their ids. Tell the user; use `?force=1` only if they confirm that the actions stay without a result.
 
 ## Hard rules
 
 - Write to the API only after the user has seen the exact content and said yes. Reading needs no confirmation.
-- Only touch goals the user named or you just listed for them. Never guess a goal address (`<space>:GOAL-N`) or a space.
+- Only touch goals the user named or you just listed for them. Never guess a goal number (`G-N`).
 - Find the token only as described in Quick start (the shared Spelflow token convention). Never print it or put it in a goal, a comment, a wiki page or a commit.
 - Non-ASCII text (Russian titles): write the JSON body to a file and send it with `curl --data-binary @file`. Inline `curl -d '...'` on Windows corrupts non-ASCII bytes silently, and the request still returns success. After a write, read the goal back and check the text.
 - After each write, report back in one line what changed and the goal id.
