@@ -1,6 +1,6 @@
 ---
 name: goal
-description: Use when the user wants to add, look up, change, close, postpone or delete a goal (personal or work, for example Rusal, Tanuki, Spelflow) in the Spelflow goal system (goal.spelflow.ru), or asks what to do next on a direction — phrasing like "add a goal", "create a goal for X", "what goals am I working on", "what am I waiting for", "what next", "what are our goals", "how is Rusal going", "what should I do about Tanuki", "put this goal on hold until Friday", "mark G-3 done", "change the check date", "delete goal G-7". Do not use for ordinary Spelflow Tracker issues (use spelflow-tracker or spelflow-loader).
+description: Use when the user wants to add, look up, change, close, postpone or delete a goal (personal or work, for example Rusal, Tanuki, Spelflow) in the Spelflow goal system (goal.spelflow.ru), or asks what to do next in a workspace or direction — phrasing like "add a goal", "create a goal for X", "what goals am I working on", "what am I waiting for", "what next", "what are our goals", "how is Rusal going", "what should I do about Tanuki", "put this goal on hold until Friday", "mark G-3 done", "change the check date", "delete goal G-7". Do not use for ordinary Spelflow Tracker issues (use spelflow-tracker or spelflow-loader).
 scenarios:
   - "What do we do next on Rusal?"
   - "How is the Tanuki direction going?"
@@ -14,7 +14,7 @@ allowed-tools: Bash(curl:*)
 
 # Spelflow Goals
 
-Work with the user's goals in the Spelflow goal system through its REST API: `https://goal.spelflow.ru/api/goals`. Goals are their own records in the goal system's database (PostgreSQL). They are **not** tracker issues. A goal is addressed as `G-N` (for example `G-3`). A goal may optionally link to a tracker project or task (see "Links"), and the link is only a pointer: writing a goal never changes anything in the tracker.
+Work with the user's goals in the Spelflow goal system through its REST API: `https://goal.spelflow.ru/api/goals`. Goals are their own records in the goal system's database (PostgreSQL). They are **not** tracker issues. A goal is addressed as `G-N` (for example `G-3`) and belongs to one workspace (personal, Rusal, Tanuki, Spelflow). A goal may optionally link to a tracker project or task (see "Links"), and the link is only a pointer: writing a goal never changes anything in the tracker.
 
 ## Quick start
 
@@ -28,7 +28,8 @@ AUTH="Authorization: Bearer $T"
 API="https://goal.spelflow.ru/api/goals"
 
 curl -s -H "$AUTH" "$API"                          # all goals
-curl -s -H "$AUTH" "$API?status=waiting"           # filter: status, kind, direction
+curl -s -H "$AUTH" "$API?workspace=rusal"          # one workspace
+curl -s -H "$AUTH" "$API?status=waiting"           # filter: workspace, status, kind, direction
 curl -s -H "$AUTH" "$API/G-3"                       # one goal
 curl -s https://goal.spelflow.ru/api               # index of the API
 ```
@@ -42,15 +43,16 @@ Full field list, statuses, errors and examples: `reference/api-reference.md`. Re
 - **Type:** a `result` (what the user wants to get: weight under 85 kg) or an `action` (a concrete step that serves a result: run 100 km). An action points at its result through `parentId`.
 - **Status:** `work`, `waiting`, `later`, `closed`.
 - **Waiting needs two things together:** `waitingFor` (what is awaited) and `check` (the date to look again). Never set `waiting` with only one of them. The API rejects it.
-- **Direction** (`direction`) is required: the project the goal belongs to (Tanuki, Spelflow, a body goal, and so on).
+- **Workspace** (`workspace`) is required: where the goal lives. The keys are listed by `GET https://goal.spelflow.ru/api` under `linkWorkspaces`: `me` (personal: weight, relationships), `rusal`, `tanuki`, `spelflow`. There is no separate "goals" project or workspace. An action and its result are always in the same workspace.
+- **Direction** (`direction`) is optional: a subgroup inside a workspace, for example "Body" and "Relationships" inside `me`. Leave it empty when the workspace is enough (Rusal).
 - **Links** (`links`) are optional pointers to a tracker project or task, for example a goal "finish the A0A project" linked to that project. Many goals have none ("Relationships", "Weight"). See "Links".
 
 ## "What next?" mode
 
 When the user asks what the goals are, how a direction is going or what to do next, answer from the system first. This mode only reads until the user agrees to a write.
 
-1. **Read first.** `GET` the goals of the named direction (`?direction=...`). Ask one question only if no direction is named or the name matches none: which direction. If the direction exists, do not ask "goals in the system or project goals?".
-2. **Show the state in at most 5 lines:** goals in `work` (up to 3), goals in `waiting` with check dates, overdue items (check date or deadline passed). State overdue neutrally and offer three moves: shrink the step, move the date, or close it. No judgement.
+1. **Read first.** `GET` the goals of the named workspace (`?workspace=...`, add `direction` if one is named). The workspace is clear from the question ("Rusal", "my weight") or is the one of the project you work in; propose it, and ask one question only if it is not clear. Never ask "goals in the system or project goals?". If the workspace has no cards, say that in one line ("no cards in <workspace> yet") and do not list goals from other workspaces.
+2. **Show the state in at most 5 lines:** goals in `work` (the most important first, at most three lines), goals in `waiting` with check dates, overdue items (check date or deadline passed). State overdue neutrally and offer three moves: shrink the step, move the date, or close it. No judgement.
 3. **Two deadlines.** If the context gives two different deadlines for one goal, ask once which one is the goal's deadline. Without a deadline there is no pace.
 4. **Only then use project context** (wiki, PM files, what the user told you). Each plan item either points to an existing goal or is offered as a new card. Offer cards only for next actions and waits, at most three at a time. Other plan items stay in the chat or a PM file, so the goal list does not fill up.
 5. **External dependencies** (a request, a reply from a person, a ticket): offer a `waiting` card with `waitingFor` and a check date, but only when the request has already been sent. If the question has not been asked yet, offer an action card ("ask X about Y") instead and create the `waiting` card after the question is asked. Never invent the date; ask.
@@ -76,7 +78,11 @@ The user should end up with a small, clear goal, not a dumped sentence. Talk it 
    The user may skip questions 2 and 3: save the card without `ifThen` and do not press. Do not ask 2 and 3 for a `result`, or for an action that starts in `later`.
 6. **Show the finished card and wait for an explicit yes. Only then `POST`.**
 
-Direction and status are never guessed. If the user has not said them, ask.
+Workspace and status are never guessed. If the user has not said them, ask; you may propose the workspace from the project you work in, but the user confirms it.
+
+**One round, one yes.** Collect everything missing in one message (not one question per message), then show the finished card once and wait for one explicit yes. If a date is ambiguous ("two weeks" and "until the 5th" differ), show both dates in the same message and let the user pick.
+
+**An intermediate result.** A result cannot sit under another result (`parentId` is only for actions). If the user wants a step toward a bigger goal, offer two options: an `action` under the bigger goal (when the step is mostly in the user's hands), or rewrite the bigger goal itself (when it was vague and is now concrete). Do not create a neighbour card that is linked only by name.
 
 ## Links
 
@@ -101,7 +107,7 @@ A goal is not a task. "Finish the whole A0A project" is a goal and the project i
 
 When moving an action to `work` that has no `ifThen`, offer once to add the obstacle and the trigger (step 5, questions 2 and 3); do not insist.
 
-Before moving a goal to `work`, count goals already in `work` (leaf goals only). If there are already three, tell the user and offer to postpone one. This is a warning, not a ban: take it over the limit only if the user says so.
+There is no limit on goals in `work`, neither a warning nor a count. The user decided this on 2026-10-16.
 
 ## Deleting a goal
 

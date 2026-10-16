@@ -8,7 +8,7 @@ Auth: `Authorization: Bearer <token>`. Either a Spelflow Personal API Token (`hl
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/goals` | List goals. Optional filters: `status`, `kind`, `direction` |
+| `GET` | `/api/goals` | List goals. Optional filters: `workspace`, `status`, `kind`, `direction` |
 | `GET` | `/api/goals/G-N` | One goal |
 | `POST` | `/api/goals` | Create a goal. Body: a goal without `id` |
 | `PATCH` | `/api/goals/G-N` | Partial update. `null` clears a field |
@@ -21,9 +21,10 @@ Auth: `Authorization: Bearer <token>`. Either a Spelflow Personal API Token (`hl
 | `id` | string | `G-N`, assigned by the database. Read-only |
 | `title` | string | Required. The result or action, as the user would say it |
 | `kind` | `"result"` \| `"action"` | Required |
-| `direction` | string | Required. Never guessed |
+| `workspace` | string | Required. `me`, `rusal`, `tanuki` or `spelflow` (the keys under `linkWorkspaces` in `GET /api`). The token must see that workspace. Never guessed |
+| `direction` | string | Optional subgroup inside a workspace, for example "Body" inside `me` |
 | `status` | `"work"` \| `"waiting"` \| `"later"` \| `"closed"` | Required |
-| `parentId` | string | Id of the result this action serves (`G-N`) |
+| `parentId` | string | Id of the result this action serves (`G-N`). Must be in the same workspace |
 | `measureText` | string | Free-text measure while no number is set |
 | `measure` | object | `{unit, start, target?, value, mode, ticks?, log}`. `mode` is `"sum"` (entries add up) or `"last"` (entry is the new reading). `log` is `[{date, entry}]` |
 | `recurring` | string | Schedule, e.g. "every Sunday" |
@@ -54,6 +55,7 @@ curl -s -X POST -H "$AUTH" -H "Content-Type: application/json; charset=utf-8" \
 {
   "title": "Run 100 km by 8 November",
   "kind": "action",
+  "workspace": "me",
   "direction": "Body",
   "status": "work",
   "parentId": "G-1",
@@ -86,7 +88,8 @@ curl -s -X PATCH -H "$AUTH" -H "Content-Type: application/json" \
 
 | Code | Meaning |
 |---|---|
-| `400` | Bad body: missing title, kind, direction or status; `waiting` without `waitingFor` and `check`; bad id; parent goal not found |
+| `400` | Bad body: missing title, kind, workspace or status; `waiting` without `waitingFor` and `check`; bad id; unknown workspace; parent goal not found or in another workspace |
+| `403` | The token does not see the chosen workspace |
 | `401` | No or invalid token |
 | `404` | Goal not found |
 | `503` | The goal database is not reachable (it sits behind a shared SSH tunnel). Retry later; no data is lost |
