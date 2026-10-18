@@ -1,6 +1,6 @@
 ---
 name: goal
-description: Use when the user wants to add, look up, change, close, postpone or delete a goal (personal or work, for example Rusal, Tanuki, Spelflow) in the Spelflow goal system (goal.spelflow.ru), or asks what to do next in a workspace or direction — phrasing like "add a goal", "create a goal for X", "what goals am I working on", "what am I waiting for", "what next", "what are our goals", "how is Rusal going", "what should I do about Tanuki", "put this goal on hold until Friday", "mark G-3 done", "change the check date", "delete goal G-7". Do not use for ordinary Spelflow Tracker issues (use spelflow-tracker or spelflow-loader).
+description: Use when the user wants to add, look up, change, close, postpone or delete a goal (personal or work, for example Rusal, Tanuki, Spelflow) in the Spelflow goal system (goal.spelflow.ru), or asks what to do next in a workspace or direction — phrasing like "add a goal", "create a goal for X", "what goals am I working on", "what am I waiting for", "what next", "what are our goals", "how is Rusal going", "what should I do about Tanuki", "put this goal on hold until Friday", "mark G-3 done", "change the check date", "delete goal G-7", or reports or asks about a measurement ("I ran 2.1 km", "I weigh 88", "how many km did I run yesterday", "undo the last entry"). Do not use for ordinary Spelflow Tracker issues (use spelflow-tracker or spelflow-loader).
 scenarios:
   - "What do we do next on Rusal?"
   - "How is the Tanuki direction going?"
@@ -103,11 +103,27 @@ A goal is not a task. "Finish the whole A0A project" is a goal and the project i
 | "back to work" | `{"status":"work","waitingFor":null,"check":null}` |
 | "later, return DATE" | `{"status":"later","returnDate":"DATE"}` |
 | "done" / "drop it" / "replaced" | `{"status":"closed","closeReason":"done\|cancelled\|replaced","closeNote":"what came out"}` |
-| "I weighed 88.2 today" | update `measure.value` and append `{"date":"YYYY-MM-DD","entry":88.2}` to `measure.log` (send the whole `measure`) |
+| "I weighed 88.2 today", "ran 2.1 km" | not a `PATCH`: record a measurement, see "Recording measurements" |
 
 When moving an action to `work` that has no `ifThen`, offer once to add the obstacle and the trigger (step 5, questions 2 and 3); do not insist.
 
 There is no limit on goals in `work`, neither a warning nor a count. The user decided this on 2026-10-16.
+
+## Recording measurements
+
+A numeric `measure` has `mode`: `sum` (each entry adds to the total, for example km run) or `last` (each entry is the new reading, for example weight). The progress (`measure.value`, `measure.log`) is **derived** from the entry journal. Never send `value` or `log` in a `PATCH`: the server ignores them. Record entries instead:
+
+```bash
+# body.json: {"value": 2.1, "source": "site", "key": "optional-unique-key"}   (source: bot | site | import)
+curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" --data-binary @body.json "$API/G-2/entries"
+```
+
+- Add `"date": "YYYY-MM-DD"` for another day (default: today in Moscow time), `finishedAt` (ISO time) for the time of day, `note` for a comment. Numbers use a dot; the API also accepts a comma in strings.
+- A `sum` entry must be greater than zero. A wrong entry is **undone**, not subtracted: `DELETE $API/G-2/entries/ID`. The entry stays in history, leaves the total, and can be restored with `PATCH` and `{"voided":false}`. `PATCH` with `{"value","date","finishedAt"}` corrects a live entry.
+- The same `key` never creates a second entry (`200` with `"duplicate": true`). Use a key when a retry is possible.
+- History and analysis: `GET $API/G-2/entries?limit=10` (latest entries with time), `GET $API/G-2/days` (per-day totals plus best and worst day, streak, gaps, by hour; `?from=&to=`, default last 30 days), `GET $API/G-2/pace` (needed per day to the deadline, actual last 7 days, `onTrack`). The server computes all of these. Report its numbers; do not recompute.
+- Timed sessions: `POST $API/G-2/session` starts one (`{"source":"bot"}`; `409` if one is open), `POST $API/G-2/session/finish` closes it with a value, `DELETE $API/G-2/session` cancels it.
+- Record only what the user said they did, in the goal they named. Show the entry first and wait for a yes, like any other write (see Hard rules). The Telegram bot and the site are clients of the same API.
 
 ## Deleting a goal
 

@@ -13,6 +13,14 @@ Auth: `Authorization: Bearer <token>`. Either a Spelflow Personal API Token (`hl
 | `POST` | `/api/goals` | Create a goal. Body: a goal without `id` |
 | `PATCH` | `/api/goals/G-N` | Partial update. `null` clears a field |
 | `DELETE` | `/api/goals/G-N` | Delete for good. `409` if the goal has actions; `?force=1` overrides |
+| `GET` | `/api/goals/G-N/entries` | Measurement journal, latest first. `?limit`, `?voided=1` also shows undone entries |
+| `POST` | `/api/goals/G-N/entries` | Record a measurement. Body below. `201`, or `200` with `duplicate: true` for a repeated `key` |
+| `DELETE` | `/api/goals/G-N/entries/ID` | Undo an entry (also `POST`). Idempotent |
+| `PATCH` | `/api/goals/G-N/entries/ID` | `{value, date, finishedAt}` corrects a live entry; `{voided: false}` restores an undone one |
+| `GET` | `/api/goals/G-N/days` | Per-day totals and insights. `?from=YYYY-MM-DD&to=YYYY-MM-DD`, default last 30 days |
+| `GET` | `/api/goals/G-N/pace` | Needed per day to the deadline and actual last 7 days |
+| `POST` | `/api/goals/G-N/session` | Start a timed session `{source, key?}`. `409` if one is open. `DELETE` cancels it |
+| `POST` | `/api/goals/G-N/session/finish` | Close the open session with a value (same body as an entry). `409` if none is open |
 
 ## Goal object
 
@@ -84,18 +92,38 @@ curl -s -X PATCH -H "$AUTH" -H "Content-Type: application/json" \
   "https://goal.spelflow.ru/api/goals/G-4"
 ```
 
+## Entry object and journal calls
+
+`POST /api/goals/G-N/entries` body: `{"value": 2.1, "source": "bot", "key": "tg:123:456", "date": "2026-10-17", "startedAt": "...", "finishedAt": "...", "note": "..."}`. `value` and `source` (`bot`, `site` or `import`) are required; `date` defaults to today in the goal timezone (Europe/Moscow); `finishedAt` is an ISO time. Response: `{"entry": {...}, "goal": {...}, "duplicate": false}`.
+
+| Field | Notes |
+|---|---|
+| `id` | Entry id; grows with time of creation |
+| `value` | Number, three decimals. `null` while a session is open |
+| `date` | `YYYY-MM-DD`, the calendar day in the goal timezone |
+| `startedAt`, `finishedAt` | ISO times, optional |
+| `source` | `bot`, `site`, `import` |
+| `note`, `key` | Optional. `key` is unique per goal |
+| `voidedAt` | Set when undone. The entry stays in history and leaves the total |
+
+`GET /api/goals/G-N/days` returns `{mode, unit, tz, from, to, today, days: [{date, value, count, first?, last?, change?}], gaps: [...], insights: {activeDays, total?, avgPerActiveDay?, best?, worst?, currentStreak?, longestStreak?, byHour?, peakHour?, min?, max?, change?}}`. For `sum` goals `value` is the day total; for `last` goals it is the last reading and `change` is the difference from the previous reading.
+
+`GET /api/goals/G-N/pace` returns `{"pace": {value, target, unit, remaining, daysLeft, overdue, needPerDay, actualPerDay7, onTrack}}`; `400` if the goal has no measure target or no `deadline`.
+
 ## Errors
 
 | Code | Meaning |
 |---|---|
-| `400` | Bad body: missing title, kind, workspace or status; `waiting` without `waitingFor` and `check`; bad id; unknown workspace; parent goal not found or in another workspace |
+| `400` | Bad body (for an entry also: a `sum` value not above zero, a bad date, `finishedAt` before `startedAt`, an empty `PATCH`): missing title, kind, workspace or status; `waiting` without `waitingFor` and `check`; bad id; unknown workspace; parent goal not found or in another workspace |
 | `403` | The token does not see the chosen workspace |
 | `401` | No or invalid token |
-| `404` | Goal not found |
+| `404` | Goal or entry not found (an undone entry cannot be corrected, restore it first) |
 | `503` | The goal database is not reachable (it sits behind a shared SSH tunnel). Retry later; no data is lost |
-| `409` | `DELETE` of a goal that has actions. Body lists them in `children` |
+| `409` | `DELETE` of a goal that has actions (body lists them in `children`); a session is already open; no open session to finish |
 | `502`, `504` | Spelflow (the token check) answered badly or too slowly. Retry once |
 
 ## How goals are stored
 
 Each goal is a row of the `goals` table in the goal system's PostgreSQL database, with its tracker links in `goal_links` and the weekly review history in `reviews`. Goals belong to the owner whose token is used. Nothing is written to Spelflow Tracker.
+
+Progress is not stored in the goal. Every measurement is a row of the `goal_entries` table (`value`, `entry_date`, `started_at`, `finished_at`, `source`, `note`, `dedupe_key`, `voided_at`). `measure.value` and `measure.log` in a goal response are **derived** from the live entries: `start` plus the sum for `mode: sum`, the latest reading for `mode: last`, and the last 20 entries as `[{date, entry}]`. The column `goals.measure` holds only the settings (`unit`, `start`, `target`, `mode`, `ticks`), so a `PATCH` that sends `value` or `log` has no effect. An undone entry keeps its row with `voided_at` set. The same `dedupe_key` per goal never creates a second entry; at most one session (an entry without a value) is open per goal.
