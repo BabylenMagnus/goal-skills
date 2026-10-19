@@ -1,6 +1,6 @@
 ---
 name: goal
-description: Use when the user wants to add, look up, change, close, postpone or delete a goal (personal or work, for example Rusal, Tanuki, Spelflow) in the Spelflow goal system (goal.spelflow.ru), or asks what to do next in a workspace or direction — phrasing like "add a goal", "create a goal for X", "what goals am I working on", "what am I waiting for", "what next", "what are our goals", "how is Rusal going", "what should I do about Tanuki", "put this goal on hold until Friday", "mark G-3 done", "change the check date", "delete goal G-7", or reports or asks about a measurement ("I ran 2.1 km", "I weigh 88", "how many km did I run yesterday", "undo the last entry"). Do not use for ordinary Spelflow Tracker issues (use spelflow-tracker or spelflow-loader).
+description: Use when the user wants to add, look up, change, close, postpone or delete a goal (personal or work, for example Rusal, Tanuki, Spelflow) in the Spelflow goal system (goal.spelflow.ru), or asks what to do next in a workspace or direction — phrasing like "add a goal", "create a goal for X", "what goals am I working on", "what am I waiting for", "what next", "what are our goals", "how is Rusal going", "what should I do about Tanuki", "what is my main task today", "what should I do right now", "I am stopping, switching to Rusal", "back to G-12", "plan tomorrow", "put this goal on hold until Friday", "mark G-3 done", "change the check date", "delete goal G-7", or reports or asks about a measurement ("I ran 2.1 km", "I weigh 88", "how many km did I run yesterday", "undo the last entry"). Do not use for ordinary Spelflow Tracker issues (use spelflow-tracker or spelflow-loader).
 scenarios:
   - "What do we do next on Rusal?"
   - "How is the Tanuki direction going?"
@@ -8,6 +8,9 @@ scenarios:
   - "What goals are in Waiting and when do I check them?"
   - "Move G-4 to waiting for the access request, check on Friday"
   - "Close G-2, I did it, 100 km done"
+  - "What is the one thing I should do today?"
+  - "I am stopping for today, switching to Rusal"
+  - "Plan tomorrow: what is the main thing?"
 license: MIT
 allowed-tools: Bash(curl:*)
 ---
@@ -47,19 +50,56 @@ Full field list, statuses, errors and examples: `reference/api-reference.md`. Re
 - **Direction** (`direction`) is optional: a subgroup inside a workspace, for example "Body" and "Relationships" inside `me`. Leave it empty when the workspace is enough (Rusal).
 - **Links** (`links`) are optional pointers to a tracker project or task, for example a goal "finish the A0A project" linked to that project. Many goals have none ("Relationships", "Weight"). See "Links".
 
-## "What next?" mode
+## "What next?" mode: the main task of the day
 
-When the user asks what the goals are, how a direction is going or what to do next, answer from the system first. This mode only reads until the user agrees to a write.
+When the user asks what the goals are, how a direction is going, what to do next or what to do today, answer from the system first. This mode only reads until the user agrees to a write.
 
-1. **Read first.** `GET` the goals of the named workspace (`?workspace=...`, add `direction` if one is named). The workspace is clear from the question ("Rusal", "my weight") or is the one of the project you work in; propose it, and ask one question only if it is not clear. Never ask "goals in the system or project goals?". If the workspace has no cards, say that in one line ("no cards in <workspace> yet") and do not list goals from other workspaces.
+1. **Read first.** `GET` the goals. If the question names a workspace ("how is Rusal going", "my weight"), read only that one (`?workspace=...`, add `direction` if one is named). If it names none ("what should I do today", "what next"), read all workspaces and choose across them; do not ask which workspace. If the named workspace has no cards, say that in one line and do not list goals from other workspaces.
 2. **Show the state in at most 5 lines:** goals in `work` (the most important first, at most three lines), goals in `waiting` with check dates, overdue items (check date or deadline passed). State overdue neutrally and offer three moves: shrink the step, move the date, or close it. No judgement.
 3. **Two deadlines.** If the context gives two different deadlines for one goal, ask once which one is the goal's deadline. Without a deadline there is no pace.
-4. **Only then use project context** (wiki, PM files, what the user told you). Each plan item either points to an existing goal or is offered as a new card. Offer cards only for next actions and waits, at most three at a time. Other plan items stay in the chat or a PM file, so the goal list does not fill up.
-5. **External dependencies** (a request, a reply from a person, a ticket): offer a `waiting` card with `waitingFor` and a check date, but only when the request has already been sent. If the question has not been asked yet, offer an action card ("ask X about Y") instead and create the `waiting` card after the question is asked. Never invent the date; ask.
-6. **End with one recommended step**, not a choice between options. If the user will do the step themselves, ask the two questions from "Creating a goal", step 5: what will most likely get in the way, and when exactly they start (an event or a time). If the user has a scheduled event (a call, a meeting) that fits, offer it as the trigger for `ifThen`. Skip the questions if an agent does the step.
-7. **Say the risk in one line.** If the context gives both a deadline and an amount of work (for example 18 tasks of about a day each and 17 calendar days), state in one line that they may not fit and what is unknown (task size, a blocking dependency). Do not conclude; the user decides.
-8. Keep other handles for a short "later" line (at most three items), not a list of equal options.
-9. Every write follows the Hard rules: only after the user has seen the exact content and said yes.
+4. **Pick one task for today.** Go through these in order and stop at the first that decides it:
+   1. overdue or due today;
+   2. an action that unblocks its result or that other cards wait on (check `parentId` and the siblings);
+   3. the card closest to money or to a person who is waiting. The system stores no weight, so say "I assume this is closest to money, correct me" instead of presenting it as a fact;
+   4. otherwise the oldest card in `work`.
+   Prefer an action to a result. A card in `waiting` or `later` is never the answer.
+5. **Size.** Say your estimate in hours ("about 3 hours") and let the user correct it. The target for the main task is one protected block of 60 to 90 minutes; the upper limit is one working day. If the estimate is more than a day, propose the piece that fits in a day and ask whether to create it as an `action` under the card (see "Creating a goal"). If `nextAction` is empty or stale, propose a new one.
+6. **Ask about energy, at request time.** One question, every time, not once a day: "How much energy do you have right now: low, normal, high?" With low energy take the lightest of the important cards, or only its first small step (send the message, not do the whole check), and say once that resting is an allowed answer. Never press.
+7. **Answer format: one task and the reason.** "Today: <task>. Why: <one or two lines>. About <time>." No list of options. After it, at most one short line for a quick item (under 15 minutes) that is due today. Keep other handles for a short "later" line (at most three items).
+8. **External dependencies** (a request, a reply from a person, a ticket): offer a `waiting` card with `waitingFor` and a check date, but only when the request has already been sent. If the question has not been asked yet, offer an action card ("ask X about Y") instead and create the `waiting` card after the question is asked. Never invent the date; ask.
+9. **Use project context** (wiki, PM files, what the user told you) only after the system. Each plan item either points to an existing goal or is offered as a new card. Offer cards only for next actions and waits, at most three at a time.
+10. **If the user will do the step themselves**, ask the two questions from "Creating a goal", step 5: what will most likely get in the way, and when exactly they start. If a scheduled event (a call, a meeting) fits, offer it as the trigger for `ifThen`. Skip them if an agent does the step or the user is tired.
+11. **Say the risk in one line.** If the context gives both a deadline and an amount of work (for example 18 tasks of about a day each and 17 calendar days), state in one line that they may not fit and what is unknown (task size, a blocking dependency). Do not conclude; the user decides.
+12. **Be honest about the rule.** "One main task a day" is a convenient rule, not a research result: studies support specific goals, plans for interruptions and noticing progress, but nobody tested the number. Do not present it as science.
+13. Every write follows the Hard rules: only after the user has seen the exact content and said yes.
+
+## Stopping and resuming
+
+People switch between projects all day (Rusal, the pharmacy, Tanuki, a run). A short note about where they stopped makes the return easier.
+
+1. When the user says they stop or switch ("stopping for today", "switching to Rusal", "interrupting G-12") and the goal is named or obvious, ask one question: "Where did you stop, and what do you start with when you come back? One line."
+2. Offer to save the answer as the `nextAction` of that goal (`PATCH` with `{"nextAction": "..."}`), show the exact text, and wait for a yes. The new line replaces the old `nextAction`.
+3. When the user comes back ("back to G-12") or the goal is chosen in "What next?", show the saved line first.
+4. If the user says it is finished, skip the question and go to "Progress and misses". If the user does not want to write anything, drop it. Never press.
+
+## Progress and misses
+
+1. After the main task, or when the user reports a result, ask one question: "What moved?" Progress of any size counts.
+2. With a numeric `measure`, record it as an entry (see "Recording measurements"; show it first, wait for a yes). Without a measure, offer to update `nextAction` to the next step, or to close the goal if it is done.
+3. If the task did not get done, do not assess or ask "why". Offer three moves: shrink the step, move the date, or close it.
+
+## Evening question (optional)
+
+When the user asks to plan tomorrow, or it is evening and they ask what next, put two questions in one message:
+
+1. Which one thing would make tomorrow a good day? It need not be work: a run, a meeting, a rest.
+2. When do you start, and what could interrupt you? The answer becomes `ifThen`: "If <event or time>, then <step>; if <interruption>, then <what I do instead>".
+
+The user can skip both. Write only after the exact text has been shown and a yes has come.
+
+## Weekly review (optional)
+
+Once a week, if the user asks: from the user's own words, on how many days a main task was chosen and how many were done, and where the time estimate and the real time differed. For numeric goals add `days` and `pace` from the server and report its numbers. No score, no "you should".
 
 ## Creating a goal
 
@@ -70,6 +110,11 @@ The user should end up with a small, clear goal, not a dumped sentence. Talk it 
 1. Ask what the user wants in their own words.
 2. If it is a solution ("buy a treadmill"), ask what result they want from it.
 3. Ask how they will know it worked: a number or a clear sign (`measureText`, or a numeric `measure`).
+   Also settle the **kind of aim** (no separate field; it lives in the wording of the title and `measureText`):
+   - a **result** (default): a clear aim with a number or a visible sign ("100 km", "ten pharmacies closed");
+   - a **learning** aim: for a new, complex task, where the user does not yet know how ("find and check three ways to extract contraindications from instructions"); write it as what will be learned, with the check in `measureText` ("done when I can explain it and have tried it on five documents");
+   - a **behaviour** aim: important but hard to measure ("each evening choose tomorrow's main task").
+   If the user describes an unfamiliar area as a result ("make the parser" in a field they have not worked in), offer once to rephrase it as a learning aim, in one sentence say why (a result target makes people skip the learning the task needs), and accept a refusal.
 4. For an action, find which result it serves (`parentId`) or say honestly that it serves none.
 5. For an action that will start in `work`, ask three short questions, one at a time:
    1. The first small step (`nextAction`).
@@ -141,3 +186,4 @@ Delete is real and irreversible: the goal disappears from the database. Prefer c
 - Non-ASCII text (Russian titles): write the JSON body to a file and send it with `curl --data-binary @file`. Inline `curl -d '...'` on Windows corrupts non-ASCII bytes silently, and the request still returns success. After a write, read the goal back and check the text.
 - After each write, report back in one line what changed and the goal id.
 - Dates are `YYYY-MM-DD`. Never write a date you guessed; ask.
+- Extra questions (energy, where you stopped, evening plan) are never required. The user can skip any of them without explanation; drop the question and carry on.
