@@ -55,7 +55,7 @@ Full field list, statuses, errors and examples: `reference/api-reference.md`. Re
 When the user asks what the goals are, how a direction is going, what to do next or what to do today, answer from the system first. This mode only reads until the user agrees to a write.
 
 1. **Read first.** `GET` the goals. If the question names a workspace ("how is Rusal going", "my weight"), read only that one (`?workspace=...`, add `direction` if one is named). If it names none ("what should I do today", "what next"), read all workspaces and choose across them; do not ask which workspace. If the named workspace has no cards, say that in one line and do not list goals from other workspaces.
-2. **Show the state in at most 5 lines:** goals in `work` (the most important first, at most three lines), goals in `waiting` with check dates, overdue items (check date or deadline passed). State overdue neutrally and offer three moves: shrink the step, move the date, or close it. No judgement.
+2. **Show the state in at most 5 lines:** goals in `work` (the most important first, at most three lines), goals in `waiting` with check dates, overdue items (check date or deadline passed). State overdue neutrally and offer three moves: shrink the step, move the date, or close it. No judgement. For a goal with a numeric measure and a deadline, put its pace in the line from `GET .../pace` (needed per day, actual last 7 days); never calculate it yourself.
 3. **Two deadlines.** If the context gives two different deadlines for one goal, ask once which one is the goal's deadline. Without a deadline there is no pace.
 4. **Pick one task for today.** Go through these in order and stop at the first that decides it:
    1. overdue or due today;
