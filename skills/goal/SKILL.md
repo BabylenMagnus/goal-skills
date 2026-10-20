@@ -62,7 +62,7 @@ When the user asks what the goals are, how a direction is going, what to do next
    2. an action that unblocks its result or that other cards wait on (check `parentId` and the siblings);
    3. the card closest to money or to a person who is waiting. The system stores no weight, so say "I assume this is closest to money, correct me" instead of presenting it as a fact;
    4. otherwise the oldest card in `work`.
-   Prefer an action to a result. A card in `waiting` or `later` is never the answer.
+   Prefer an action to a result. A card in `waiting` or `later` is never the answer. A card whose `dependsOn` lists a card that is not `closed` is blocked and never the answer either. The server already applies these rules (except the money guess): `GET /api/goals/today` (optionally `?workspace=`) returns its pick and the reason; use it as the baseline, and if your money assumption (step 3) points elsewhere, say so in one line instead of silently overriding it.
 5. **Size.** Say your estimate in hours ("about 3 hours") and let the user correct it. The target for the main task is one protected block of 60 to 90 minutes; the upper limit is one working day. If the estimate is more than a day, propose the piece that fits in a day and ask whether to create it as an `action` under the card (see "Creating a goal"). If `nextAction` is empty or stale, propose a new one.
 6. **Ask about energy, at request time.** One question, every time, not once a day: "How much energy do you have right now: low, normal, high?" With low energy take the lightest of the important cards, or only its first small step (send the message, not do the whole check), and say once that resting is an allowed answer. Never press.
 7. **Answer format: one task and the reason.** "Today: <task>. Why: <one or two lines>. About <time>." No list of options. After it, at most one short line for a quick item (under 15 minutes) that is due today. Keep other handles for a short "later" line (at most three items).
@@ -72,6 +72,16 @@ When the user asks what the goals are, how a direction is going, what to do next
 11. **Say the risk in one line.** If the context gives both a deadline and an amount of work (for example 18 tasks of about a day each and 17 calendar days), state in one line that they may not fit and what is unknown (task size, a blocking dependency). Do not conclude; the user decides.
 12. **Be honest about the rule.** "One main task a day" is a convenient rule, not a research result: studies support specific goals, plans for interruptions and noticing progress, but nobody tested the number. Do not present it as science.
 13. Every write follows the Hard rules: only after the user has seen the exact content and said yes.
+
+## Waiting for another card
+
+`waiting` with `waitingFor` and `check` is for something outside the system (a person, a ticket). When a card must wait for **another card** in the system (G-5 cannot start until G-11 is closed, even in another workspace), set `dependsOn` instead of, or together with, `waiting`.
+
+1. Ask which card it waits for; list candidates from a `GET` (all workspaces); never guess a `G-N`.
+2. Show the exact change ("G-5 will wait for G-11") and wait for a yes. Then `PATCH` `{"dependsOn": ["G-11"]}` (the list replaces the old one; `[]` or `null` clears it). Write the JSON to a file as in the Hard rules.
+3. `400` means a cycle, a card waiting for what it serves, or an unknown card. Tell the user in one line; do not retry with a changed list on your own.
+4. When a dependency is closed the waiting card becomes eligible again. Mention it when you see it in "What next?".
+5. An action may serve another action (`parentId` is the id of a result or an action), so a step can be split into smaller steps. A result still has no parent.
 
 ## Stopping and resuming
 
@@ -127,7 +137,7 @@ Workspace and status are never guessed. If the user has not said them, ask; you 
 
 **One round, one yes.** Collect everything missing in one message (not one question per message), then show the finished card once and wait for one explicit yes. If a date is ambiguous ("two weeks" and "until the 5th" differ), show both dates in the same message and let the user pick.
 
-**An intermediate result.** A result cannot sit under another result (`parentId` is only for actions). If the user wants a step toward a bigger goal, offer two options: an `action` under the bigger goal (when the step is mostly in the user's hands), or rewrite the bigger goal itself (when it was vague and is now concrete). Do not create a neighbour card that is linked only by name.
+**An intermediate result.** A result cannot sit under another result (`parentId` is only for actions; the API rejects it with `400`). If the user wants a step toward a bigger goal, offer two options: an `action` under the bigger goal (when the step is mostly in the user's hands), or rewrite the bigger goal itself (when it was vague and is now concrete). An action may also serve another action when a step needs smaller steps. Do not create a neighbour card that is linked only by name.
 
 ## Links
 

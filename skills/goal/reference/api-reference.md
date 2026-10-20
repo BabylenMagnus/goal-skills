@@ -9,9 +9,10 @@ Auth: `Authorization: Bearer <token>`. Either a Spelflow Personal API Token (`hl
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/goals` | List goals. Optional filters: `workspace`, `status`, `kind`, `direction` |
+| `GET` | `/api/goals/today` | The one main task for today: `{goal, reason}` with `reason` `overdue`, `due-today`, `blocks-others` or `oldest`, or `{goal: null}`. `?workspace` limits the candidates |
 | `GET` | `/api/goals/G-N` | One goal |
 | `POST` | `/api/goals` | Create a goal. Body: a goal without `id` |
-| `PATCH` | `/api/goals/G-N` | Partial update. `null` clears a field |
+| `PATCH` | `/api/goals/G-N` | Partial update. `null` clears a field. `dependsOn` replaces the whole list |
 | `DELETE` | `/api/goals/G-N` | Delete for good. `409` if the goal has actions; `?force=1` overrides |
 | `GET` | `/api/goals/G-N/entries` | Measurement journal, latest first. `?limit`, `?voided=1` also shows undone entries |
 | `POST` | `/api/goals/G-N/entries` | Record a measurement. Body below. `201`, or `200` with `duplicate: true` for a repeated `key` |
@@ -32,7 +33,8 @@ Auth: `Authorization: Bearer <token>`. Either a Spelflow Personal API Token (`hl
 | `workspace` | string | Required. `me`, `rusal`, `tanuki` or `spelflow` (the keys under `linkWorkspaces` in `GET /api`). The token must see that workspace. Never guessed |
 | `direction` | string | Optional subgroup inside a workspace, for example "Body" inside `me` |
 | `status` | `"work"` \| `"waiting"` \| `"later"` \| `"closed"` | Required |
-| `parentId` | string | Id of the result this action serves (`G-N`). Must be in the same workspace |
+| `parentId` | string | Id of the result or action this action serves (`G-N`). Only an action has a parent; a result has none. Same workspace. A chain of actions is allowed, a cycle is not |
+| `dependsOn` | string[] | Cards (`G-N`, any workspace) that must be closed before this one can start: "waits for". `[]` or `null` clears. A card cannot wait for itself, for what it serves, or in a cycle. An open (not `closed`) dependency keeps the card out of `GET /api/goals/today` |
 | `measureText` | string | Free-text measure while no number is set |
 | `measure` | object | `{unit, start, target?, value, mode, ticks?, log}`. `mode` is `"sum"` (entries add up) or `"last"` (entry is the new reading). `log` is `[{date, entry}]` |
 | `recurring` | string | Schedule, e.g. "every Sunday" |
@@ -114,7 +116,7 @@ curl -s -X PATCH -H "$AUTH" -H "Content-Type: application/json" \
 
 | Code | Meaning |
 |---|---|
-| `400` | Bad body (for an entry also: a `sum` value not above zero, a bad date, `finishedAt` before `startedAt`, an empty `PATCH`): missing title, kind, workspace or status; `waiting` without `waitingFor` and `check`; bad id; unknown workspace; parent goal not found or in another workspace |
+| `400` | Bad body (for an entry also: a `sum` value not above zero, a bad date, `finishedAt` before `startedAt`, an empty `PATCH`): missing title, kind, workspace or status; `waiting` without `waitingFor` and `check`; bad id; unknown workspace; parent goal not found, in another workspace, or a result given a parent; a cycle in `parentId` or `dependsOn`; a card waiting for itself or for what it serves; a `dependsOn` card that does not exist or is not the owner's |
 | `403` | The token does not see the chosen workspace |
 | `401` | No or invalid token |
 | `404` | Goal or entry not found (an undone entry cannot be corrected, restore it first) |
@@ -124,6 +126,6 @@ curl -s -X PATCH -H "$AUTH" -H "Content-Type: application/json" \
 
 ## How goals are stored
 
-Each goal is a row of the `goals` table in the goal system's PostgreSQL database, with its tracker links in `goal_links` and the weekly review history in `reviews`. Goals belong to the owner whose token is used. Nothing is written to Spelflow Tracker.
+Each goal is a row of the `goals` table in the goal system's PostgreSQL database, with its tracker links in `goal_links`, its "waits for" links in `goal_dependencies` (deleting a goal removes its links) and the weekly review history in `reviews`. Goals belong to the owner whose token is used. Nothing is written to Spelflow Tracker.
 
 Progress is not stored in the goal. Every measurement is a row of the `goal_entries` table (`value`, `entry_date`, `started_at`, `finished_at`, `source`, `note`, `dedupe_key`, `voided_at`). `measure.value` and `measure.log` in a goal response are **derived** from the live entries: `start` plus the sum for `mode: sum`, the latest reading for `mode: last`, and the last 20 entries as `[{date, entry}]`. The column `goals.measure` holds only the settings (`unit`, `start`, `target`, `mode`, `ticks`), so a `PATCH` that sends `value` or `log` has no effect. An undone entry keeps its row with `voided_at` set. The same `dedupe_key` per goal never creates a second entry; at most one session (an entry without a value) is open per goal.
