@@ -43,7 +43,7 @@ Full field list, statuses, errors and examples: `reference/api-reference.md`. Re
 
 ## What a goal is
 
-- **Type:** a `result` (what the user wants to get: weight under 85 kg) or an `action` (a concrete step that serves a result: run 100 km). An action points at its result through `parentId`.
+- **Type:** a `result` (what the user wants to get: weight under 85 kg) or an `action` (a concrete step that serves a result: run 100 km). A card points at what it serves through `parentId`: an action at its result, a result at a bigger result (a stage), so goals nest: goal → stage → steps.
 - **Status:** `work`, `waiting`, `later`, `closed`.
 - **Waiting needs two things together:** `waitingFor` (what is awaited) and `check` (the date to look again). Never set `waiting` with only one of them. The API rejects it.
 - **Workspace** (`workspace`) is required: where the goal lives. The keys are listed by `GET https://goal.spelflow.ru/api` under `linkWorkspaces`: `me` (personal: weight, relationships), `rusal`, `tanuki`, `spelflow`. There is no separate "goals" project or workspace. An action and its result are always in the same workspace.
@@ -81,7 +81,7 @@ When the user asks what the goals are, how a direction is going, what to do next
 2. Show the exact change ("G-5 will wait for G-11") and wait for a yes. Then `PATCH` `{"dependsOn": ["G-11"]}` (the list replaces the old one; `[]` or `null` clears it). Write the JSON to a file as in the Hard rules.
 3. `400` means a cycle, a card waiting for what it serves, or an unknown card. Tell the user in one line; do not retry with a changed list on your own.
 4. When a dependency is closed the waiting card becomes eligible again. Mention it when you see it in "What next?".
-5. An action may serve another action (`parentId` is the id of a result or an action), so a step can be split into smaller steps. A result still has no parent.
+5. `parentId` (serves) and `dependsOn` (waits) are different things. `parentId` builds the hierarchy: what this card is part of. `dependsOn` blocks: this card cannot start until that one is closed. Never express a hierarchy with `dependsOn` ("the goal waits for its stage"): it would block the goal and draw the tree as waiting arrows.
 
 ## Stopping and resuming
 
@@ -125,7 +125,7 @@ The user should end up with a small, clear goal, not a dumped sentence. Talk it 
    - a **learning** aim: for a new, complex task, where the user does not yet know how ("find and check three ways to extract contraindications from instructions"); write it as what will be learned, with the check in `measureText` ("done when I can explain it and have tried it on five documents");
    - a **behaviour** aim: important but hard to measure ("each evening choose tomorrow's main task").
    If the user describes an unfamiliar area as a result ("make the parser" in a field they have not worked in), offer once to rephrase it as a learning aim, in one sentence say why (a result target makes people skip the learning the task needs), and accept a refusal.
-4. For an action, find which result it serves (`parentId`) or say honestly that it serves none.
+4. For an action, find which result it serves (`parentId`) or say honestly that it serves none. For a result, ask once whether it is a stage of a bigger goal (then `parentId` points at that goal); a top-level goal has no parent.
 5. For an action that will start in `work`, ask three short questions, one at a time:
    1. The first small step (`nextAction`).
    2. What will most likely get in the way? One sentence. Build the trigger on this obstacle.
@@ -137,7 +137,16 @@ Workspace and status are never guessed. If the user has not said them, ask; you 
 
 **One round, one yes.** Collect everything missing in one message (not one question per message), then show the finished card once and wait for one explicit yes. If a date is ambiguous ("two weeks" and "until the 5th" differ), show both dates in the same message and let the user pick.
 
-**An intermediate result.** A result cannot sit under another result (`parentId` is only for actions; the API rejects it with `400`). If the user wants a step toward a bigger goal, offer two options: an `action` under the bigger goal (when the step is mostly in the user's hands), or rewrite the bigger goal itself (when it was vague and is now concrete). An action may also serve another action when a step needs smaller steps. Do not create a neighbour card that is linked only by name.
+**Stages: a result under a result.** A big goal is a chain of nested cards, each pointing at the one above through `parentId` (same workspace, no cycles; the API answers `400` otherwise). Example for one workspace:
+
+```
+G-30 Launch model A01                    (result, no parent)
+ └ G-31 Integration for the whole process (result, parentId G-30)
+    └ G-16 Integration with TenderPro     (result, parentId G-31)
+       └ G-18 Find out who set up the feed (action, parentId G-16)
+```
+
+When the user describes a step toward a bigger goal, pick by what it is: a concrete thing mostly in the user's hands is an `action` under the bigger card; a result of its own (it has a number or a clear sign, and its own steps) is a `result` with `parentId` of the bigger goal. If the bigger goal was vague and is now concrete, rewrite it instead. To attach an existing card to a higher one, show the exact change ("G-16 will serve G-31") and `PATCH` `{"parentId": "G-31"}` after a yes. Look for an existing card first (`GET`) instead of creating a duplicate. Do not create a neighbour card that is linked only by name, and do not use `dependsOn` for this.
 
 ## Links
 

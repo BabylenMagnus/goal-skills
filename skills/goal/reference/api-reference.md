@@ -33,7 +33,7 @@ Auth: `Authorization: Bearer <token>`. Either a Spelflow Personal API Token (`hl
 | `workspace` | string | Required. `me`, `rusal`, `tanuki` or `spelflow` (the keys under `linkWorkspaces` in `GET /api`). The token must see that workspace. Never guessed |
 | `direction` | string | Optional subgroup inside a workspace, for example "Body" inside `me` |
 | `status` | `"work"` \| `"waiting"` \| `"later"` \| `"closed"` | Required |
-| `parentId` | string | Id of the result or action this action serves (`G-N`). Only an action has a parent; a result has none. Same workspace. A chain of actions is allowed, a cycle is not |
+| `parentId` | string | Id of the result or action this card serves (`G-N`). Any card may have a parent: an action under a result or an action, a result under a bigger result (a stage). Same workspace. Chains of any depth are allowed (goal → stage → steps), a cycle is not. This is the hierarchy; use `dependsOn` only for "cannot start until closed" |
 | `dependsOn` | string[] | Cards (`G-N`, any workspace) that must be closed before this one can start: "waits for". `[]` or `null` clears. A card cannot wait for itself, for what it serves, or in a cycle. An open (not `closed`) dependency keeps the card out of `GET /api/goals/today` |
 | `measureText` | string | Free-text measure while no number is set |
 | `measure` | object | `{unit, start, target?, value, mode, ticks?, log}`. `mode` is `"sum"` (entries add up) or `"last"` (entry is the new reading). `log` is `[{date, entry}]` |
@@ -116,7 +116,7 @@ curl -s -X PATCH -H "$AUTH" -H "Content-Type: application/json" \
 
 | Code | Meaning |
 |---|---|
-| `400` | Bad body (for an entry also: a `sum` value not above zero, a bad date, `finishedAt` before `startedAt`, an empty `PATCH`): missing title, kind, workspace or status; `waiting` without `waitingFor` and `check`; bad id; unknown workspace; parent goal not found, in another workspace, or a result given a parent; a cycle in `parentId` or `dependsOn`; a card waiting for itself or for what it serves; a `dependsOn` card that does not exist or is not the owner's |
+| `400` | Bad body (for an entry also: a `sum` value not above zero, a bad date, `finishedAt` before `startedAt`, an empty `PATCH`): missing title, kind, workspace or status; `waiting` without `waitingFor` and `check`; bad id; unknown workspace; parent card not found or in another workspace; a cycle in `parentId` or `dependsOn`; a card waiting for itself or for what it serves; a `dependsOn` card that does not exist or is not the owner's |
 | `403` | The token does not see the chosen workspace |
 | `401` | No or invalid token |
 | `404` | Goal or entry not found (an undone entry cannot be corrected, restore it first) |
